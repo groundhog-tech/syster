@@ -1,105 +1,26 @@
-name: build
-
-on:
-  push:
-    branches: ["main", "master"]
-    tags: ["v*"]
-  pull_request:
-  workflow_dispatch:
+name: Build CLI for All Platforms
+on: [workflow_dispatch]
 
 jobs:
   build:
-    name: build (${{ matrix.target }})
+    name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            exe_ext: ""
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            exe_ext: ".exe"
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            exe_ext: ""
-
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-
-      # 运行测试（在 runner 原生架构上跑，避免 cross-run 问题）
-      - name: Test (host)
-        run: cargo test --locked
-
-      # 构建 release 二进制（面向 matrix.target）
-      - name: Build release (bins)
-        run: cargo build --release --locked --target ${{ matrix.target }} --bins
-
-      # 收集所有 bin targets 到 dist/ 目录
-      - name: Collect binaries
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-
-          python - <<'PY'
-          import json, subprocess, os, shutil, sys
-
-          target = os.environ["TARGET_TRIPLE"]
-          exe_ext = os.environ["EXE_EXT"]
-
-          meta = subprocess.check_output(["cargo", "metadata", "--format-version=1", "--no-deps"], text=True)
-          m = json.loads(meta)
-
-          # 收集 workspace 内所有 bin target 名称
-          bin_names = []
-          for pkg in m.get("packages", []):
-            for t in pkg.get("targets", []):
-              if "bin" in t.get("kind", []):
-                bin_names.append(t["name"])
-
-          bin_names = sorted(set(bin_names))
-          if not bin_names:
-            print("ERROR: No binary targets found (no [[bin]] or src/main.rs).")
-            sys.exit(2)
-
-          out_dir = os.path.join("target", target, "release")
-          dist_dir = "dist"
-
-          missing = []
-          for name in bin_names:
-            src = os.path.join(out_dir, name + exe_ext)
-            if not os.path.exists(src):
-              missing.append(src)
-              continue
-            dst = os.path.join(dist_dir, os.path.basename(src))
-            shutil.copy2(src, dst)
-
-          if missing:
-            print("ERROR: Some expected binaries were not produced:")
-            for p in missing:
-              print("  -", p)
-            sys.exit(3)
-
-          print("Collected binaries:", ", ".join(os.listdir(dist_dir)))
-          PY
-        env:
-          TARGET_TRIPLE: ${{ matrix.target }}
-          EXE_EXT: ${{ matrix.exe_ext }}
-
-      - name: Upload artifacts
+      # 第一步：装个编译器（注意：这里连 checkout 都不写了，根本不看你仓库里有什么）
+      - uses: dtolnay/rust-toolchain@stable
+      
+      # 第二步：直接去 Rust 官方中央仓库下载源码并原地编译！
+      # --root ./my_output 会让它把编译好的文件乖乖放进 my_output/bin 文件夹里
+      - name: Remote Download & Build
+        run: cargo install syster-cli --root ./my_output
+          
+      # 第三步：收割战利品，打包带走！
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: binaries-${{ matrix.target }}
-          path: dist/*
-          if-no-files-found: error
+          name: syster-cli-${{ matrix.os }}
+          path: my_output/bin/*
