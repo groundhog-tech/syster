@@ -6,21 +6,27 @@ jobs:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false  # 🚨 关键修复：关闭连坐机制，允许其他平台继续跑
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       
-      # 拉取最新的稳定版 Rust 编译器
-      - uses: dtolnay/rust-toolchain@stable 
-      
-      # 🚨 关键修复：用 -p 指定包名，而不是指定死路径
-      - name: Build syster-cli
-        run: cargo build --release -p syster-cli 
-        
+      # 🚨 绝杀招：强制使用 bash 搜索图纸，找到后顺藤摸瓜编译
+      - name: Auto-discover and Build
+        shell: bash
+        run: |
+          # 搜索整个仓库，找到真正的总图纸
+          MANIFEST=$(find . -name "Cargo.toml" | grep -v "test" | head -n 1)
+          echo "在神秘角落找到了图纸: $MANIFEST"
+          cargo build --release --manifest-path "$MANIFEST"
+          
+      # 🚨 智能打包：无论编译出来的文件在哪个深山老林，全部抓出来
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: syster-cli-${{ matrix.os }}
-          path: target/release/syster-cli*
+          path: |
+            **/target/release/syster-cli
+            **/target/release/syster-cli.exe
