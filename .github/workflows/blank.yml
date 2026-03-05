@@ -1,26 +1,73 @@
-name: Build CLI for All Platforms
-on: [workflow_dispatch]
+name: build-syster-cli
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }}
+    name: build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            exe: syster
+          - os: windows-latest
+            exe: syster.exe
+          - os: macos-latest
+            exe: syster
+
     steps:
-      # 第一步：装个编译器（注意：这里连 checkout 都不写了，根本不看你仓库里有什么）
-      - uses: dtolnay/rust-toolchain@stable
-      
-      # 第二步：直接去 Rust 官方中央仓库下载源码并原地编译！
-      # --root ./my_output 会让它把编译好的文件乖乖放进 my_output/bin 文件夹里
-      - name: Remote Download & Build
-        run: cargo install syster-cli --root ./my_output
-          
-      # 第三步：收割战利品，打包带走！
-      - name: Upload Artifact
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Verify submodules present
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f base/Cargo.toml
+          test -f cli/Cargo.toml
+          git submodule status --recursive
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      # 关键：用 Cargo 的 paths override，把 syster-base 依赖指向本仓库的 base/ 子模块
+      - name: Configure cargo path overrides
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .cargo
+          cat > .cargo/config.toml <<'EOF'
+          paths = ["base"]
+          EOF
+
+      - name: Build CLI (release)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --release --manifest-path cli/Cargo.toml --features interchange
+
+      - name: Collect artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp "cli/target/release/${{ matrix.exe }}" dist/
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: syster-cli-${{ matrix.os }}
-          path: my_output/bin/*
+          name: syster-${{ matrix.os }}
+          path: dist/*
+          if-no-files-found: error
