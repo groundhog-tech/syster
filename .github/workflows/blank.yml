@@ -1,0 +1,18 @@
+name: Build CLI for All Platforms
+on: [workflow_dispatch] # 允许你手动点击运行
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest] # 同时启动三台不同系统的云服务器！
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release --manifest-path crates/syster-cli/Cargo.toml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: syster-cli-${{ matrix.os }}
+          path: target/release/syster-cli*
