@@ -3,7 +3,7 @@
 	url = https://github.com/jade-codes/syster-pipelines.git
 [submodule "base"]
 	path = base
-	url = https://github.com/jade-codes/syster-base.git
+	url = https://github.com/groundhog-tech/syster-base.git
 [submodule "cli"]
 	path = cli
 	url = https://github.com/jade-codes/syster-cli.git
